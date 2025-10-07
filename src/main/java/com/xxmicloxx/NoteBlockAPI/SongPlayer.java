@@ -51,7 +51,10 @@ public abstract class SongPlayer {
 	}
 
 	public SongPlayer(Song song, SoundCategory soundCategory) {
-		NoteBlockAPI.getAPI().handleDeprecated(Thread.currentThread().getStackTrace());
+                NoteBlockAPI api = NoteBlockAPI.getAPI();
+                if (api != null) {
+                        api.handleDeprecated(Thread.currentThread().getStackTrace());
+                }
 		
 		this.song = song;
 		this.soundCategory = soundCategory;
@@ -241,7 +244,7 @@ public abstract class SongPlayer {
 				long startTime = System.currentTimeMillis();
 				lock.lock();
 				try {
-					if (destroyed || NoteBlockAPI.getAPI().isDisabling()){
+                                    if (destroyed || NoteBlockAPI.isDisablingAPI()){
 						break;
 					}
 

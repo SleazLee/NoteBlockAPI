@@ -208,11 +208,15 @@ public final class Scheduler {
     }
 
     private static Plugin getPlugin() {
-        return NoteBlockAPI.getAPI();
+        Plugin plugin = NoteBlockAPI.getOwningPlugin();
+        if (plugin == null) {
+            throw new IllegalStateException("NoteBlockAPI has not been initialized. Call NoteBlockAPI.initializeAPI(JavaPlugin) before using the scheduler.");
+        }
+        return plugin;
     }
 
     private static Logger getLogger() {
-        Plugin plugin = NoteBlockAPI.getAPI();
+        Plugin plugin = NoteBlockAPI.getOwningPlugin();
         return plugin != null ? plugin.getLogger() : Bukkit.getLogger();
     }
 
