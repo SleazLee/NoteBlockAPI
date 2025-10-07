@@ -40,14 +40,12 @@ public abstract class SongPlayer {
 
 	private final Lock lock = new ReentrantLock();
 
-	protected NoteBlockPlayerMain plugin;
-
 	protected SoundCategory soundCategory;
-	
+
 	private com.xxmicloxx.NoteBlockAPI.songplayer.SongPlayer newSongPlayer;
 
 	public SongPlayer(Song song) {
-		this(song, SoundCategory.MASTER);
+	this(song, SoundCategory.MASTER);
 	}
 
 	public SongPlayer(Song song, SoundCategory soundCategory) {
@@ -61,11 +59,15 @@ public abstract class SongPlayer {
 		plugin = NoteBlockPlayerMain.plugin;
 		start();
 	}
-	
+
+	this.song = song;
+	this.soundCategory = soundCategory;
+	start();
+	}
+
 	SongPlayer(com.xxmicloxx.NoteBlockAPI.songplayer.SongPlayer songPlayer){
-		newSongPlayer = songPlayer;
-		song = createSongFromNew(songPlayer.getSong());
-		plugin = NoteBlockPlayerMain.plugin;
+	newSongPlayer = songPlayer;
+	song = createSongFromNew(songPlayer.getSong());
 	}
 	
 	private Song createSongFromNew(com.xxmicloxx.NoteBlockAPI.model.Song s){
@@ -239,7 +241,7 @@ public abstract class SongPlayer {
 	 * Starts this SongPlayer
 	 */
 	private void start() {
-		plugin.doAsync(() -> {
+		NoteBlockAPI.runAsync(() -> {
 			while (!destroyed) {
 				long startTime = System.currentTimeMillis();
 				lock.lock();
@@ -255,7 +257,7 @@ public abstract class SongPlayer {
 							playing = false;
 							tick = -1;
 							SongEndEvent event = new SongEndEvent(SongPlayer.this);
-							plugin.doSync(() -> Bukkit.getPluginManager().callEvent(event));
+							NoteBlockAPI.runSync(() -> Bukkit.getPluginManager().callEvent(event));
 							if (autoDestroy) {
 								destroy();
 							}
@@ -263,7 +265,7 @@ public abstract class SongPlayer {
 						}
 						CallUpdate("tick", tick);
 
-						plugin.doSync(() -> {
+						NoteBlockAPI.runSync(() -> {
 							for (String s : playerList.keySet()) {
 	                            Player p = Bukkit.getPlayerExact(s);
 	                            if (p == null) {
@@ -379,7 +381,7 @@ public abstract class SongPlayer {
 		lock.lock();
 		try {
 			SongDestroyingEvent event = new SongDestroyingEvent(this);
-			plugin.doSync(() -> Bukkit.getPluginManager().callEvent(event));
+			NoteBlockAPI.runSync(() -> Bukkit.getPluginManager().callEvent(event));
 			//Bukkit.getScheduler().cancelTask(threadId);
 			if (event.isCancelled()) {
 				return;
@@ -410,7 +412,7 @@ public abstract class SongPlayer {
 		this.playing = playing;
 		if (!playing) {
 			SongStoppedEvent event = new SongStoppedEvent(this);
-			plugin.doSync(() -> Bukkit.getPluginManager().callEvent(event));
+			NoteBlockAPI.runSync(() -> Bukkit.getPluginManager().callEvent(event));
 		}
 		CallUpdate("playing", playing);
 	}
@@ -456,7 +458,7 @@ public abstract class SongPlayer {
 			NoteBlockPlayerMain.plugin.playingSongs.put(player.getName(), songs);
 			if (playerList.isEmpty() && autoDestroy) {
 				SongEndEvent event = new SongEndEvent(this);
-				plugin.doSync(() -> Bukkit.getPluginManager().callEvent(event));
+				NoteBlockAPI.runSync(() -> Bukkit.getPluginManager().callEvent(event));
 				destroy();
 			}
 		} finally {
