@@ -290,25 +290,25 @@ public class NoteBlockAPI extends JavaPlugin {
                 shutdownInternal();
         }
 
-	public void doSync(Runnable runnable) {
-	Scheduler.run(runnable);
-	}
+        public void doSync(Runnable runnable) {
+                Scheduler.run(runnable);
+        }
 
-	public void doAsync(Runnable runnable) {
-	Scheduler.runAsync(runnable);
-	}
+        public void doAsync(Runnable runnable) {
+                Scheduler.runAsync(runnable);
+        }
 
-	public boolean isDisabling() {
-	return STATE.disabling;
-	}
+        public boolean isDisabling() {
+                return STATE.disabling;
+        }
 
-	public static void runSync(Runnable runnable) {
-	Scheduler.run(runnable);
-	}
+        public static void doSync(Runnable runnable) {
+                Scheduler.run(runnable);
+        }
 
-	public static void runAsync(Runnable runnable) {
-	Scheduler.runAsync(runnable);
-	}
+        public static void doAsync(Runnable runnable) {
+                Scheduler.runAsync(runnable);
+        }
 
         public static boolean isDisablingAPI() {
                 synchronized (STATE) {

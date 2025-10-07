@@ -303,8 +303,8 @@ public abstract class SongPlayer {
 	/**
 	 * Starts this SongPlayer
 	 */
-        private void start() {
-            NoteBlockAPI.runAsync(() -> {
+	private void start() {
+            NoteBlockAPI.doAsync(() -> {
 			while (!destroyed) {
 				long startTime = System.currentTimeMillis();
 				lock.lock();
@@ -320,7 +320,7 @@ public abstract class SongPlayer {
 								fading = false;
 								if (!playing) {
 									SongStoppedEvent event = new SongStoppedEvent(this);
-                                                                    NoteBlockAPI.runSync(() -> Bukkit.getPluginManager().callEvent(event));
+                                                                    NoteBlockAPI.doSync(() -> Bukkit.getPluginManager().callEvent(event));
 									volume = fadeIn.getFadeTarget();
 									continue;
 								}
@@ -352,7 +352,7 @@ public abstract class SongPlayer {
 							volume = fadeIn.getFadeTarget();
 							if (repeat == RepeatMode.ONE){
 								SongLoopEvent event = new SongLoopEvent(this);
-                                                            NoteBlockAPI.runSync(() -> Bukkit.getPluginManager().callEvent(event));
+                                                            NoteBlockAPI.doSync(() -> Bukkit.getPluginManager().callEvent(event));
 
 								if (!event.isCancelled()) {
 									continue;
@@ -378,7 +378,7 @@ public abstract class SongPlayer {
 										CallUpdate("song", song);
 										if (repeat == RepeatMode.ALL) {
 											SongLoopEvent event = new SongLoopEvent(this);
-                                                                                    NoteBlockAPI.runSync(() -> Bukkit.getPluginManager().callEvent(event));
+                                                                                    NoteBlockAPI.doSync(() -> Bukkit.getPluginManager().callEvent(event));
 
 											if (!event.isCancelled()) {
 												continue;
@@ -390,7 +390,7 @@ public abstract class SongPlayer {
 
 										CallUpdate("song", song);
 										SongNextEvent event = new SongNextEvent(this);
-                                                                            NoteBlockAPI.runSync(() -> Bukkit.getPluginManager().callEvent(event));
+                                                                            NoteBlockAPI.doSync(() -> Bukkit.getPluginManager().callEvent(event));
 										continue;
 									}
 								} else {
@@ -399,7 +399,7 @@ public abstract class SongPlayer {
 										song = playlist.get(actualSong);
 										CallUpdate("song", song);
 										SongNextEvent event = new SongNextEvent(this);
-                                                                            NoteBlockAPI.runSync(() -> Bukkit.getPluginManager().callEvent(event));
+                                                                            NoteBlockAPI.doSync(() -> Bukkit.getPluginManager().callEvent(event));
 										continue;
 									} else {
 										actualSong = 0;
@@ -407,7 +407,7 @@ public abstract class SongPlayer {
 										CallUpdate("song", song);
 										if (repeat == RepeatMode.ALL) {
 											SongLoopEvent event = new SongLoopEvent(this);
-                                                                                    NoteBlockAPI.runSync(() -> Bukkit.getPluginManager().callEvent(event));
+                                                                                    NoteBlockAPI.doSync(() -> Bukkit.getPluginManager().callEvent(event));
 
 											if (!event.isCancelled()) {
 												continue;
@@ -418,7 +418,7 @@ public abstract class SongPlayer {
 							}
 							playing = false;
 							SongEndEvent event = new SongEndEvent(this);
-                                                    NoteBlockAPI.runSync(() -> Bukkit.getPluginManager().callEvent(event));
+                                                    NoteBlockAPI.doSync(() -> Bukkit.getPluginManager().callEvent(event));
 							if (autoDestroy) {
 								destroy();
 							}
@@ -426,7 +426,7 @@ public abstract class SongPlayer {
 						}
 						CallUpdate("tick", tick);
 						
-                                            NoteBlockAPI.runSync(() -> {
+                                            NoteBlockAPI.doSync(() -> {
 							try {
 								for (UUID uuid : playerList.keySet()) {
 									Player player = Bukkit.getPlayer(uuid);
@@ -594,7 +594,7 @@ public abstract class SongPlayer {
 		lock.lock();
 		try {
 			SongDestroyingEvent event = new SongDestroyingEvent(this);
-                    NoteBlockAPI.runSync(() -> Bukkit.getPluginManager().callEvent(event));
+                    NoteBlockAPI.doSync(() -> Bukkit.getPluginManager().callEvent(event));
 			//Bukkit.getScheduler().cancelTask(threadId);
 			if (event.isCancelled()) {
 				return;
@@ -649,7 +649,7 @@ public abstract class SongPlayer {
 			volume = fadeIn.getFadeTarget();
 			if (!playing) {
 				SongStoppedEvent event = new SongStoppedEvent(this);
-                            NoteBlockAPI.runSync(() -> Bukkit.getPluginManager().callEvent(event));
+                            NoteBlockAPI.doSync(() -> Bukkit.getPluginManager().callEvent(event));
 			}
 		}
 
@@ -708,7 +708,7 @@ public abstract class SongPlayer {
 			NoteBlockAPI.setSongPlayersByPlayer(player, songs);
 			if (playerList.isEmpty() && autoDestroy) {
 				SongEndEvent event = new SongEndEvent(this);
-                            NoteBlockAPI.runSync(() -> Bukkit.getPluginManager().callEvent(event));
+                            NoteBlockAPI.doSync(() -> Bukkit.getPluginManager().callEvent(event));
 				destroy();
 			}
 		} finally {

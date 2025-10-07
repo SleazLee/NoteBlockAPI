@@ -49,9 +49,15 @@ public abstract class SongPlayer {
 	}
 
 	public SongPlayer(Song song, SoundCategory soundCategory) {
-	NoteBlockAPI api = NoteBlockAPI.getAPI();
-	if (api != null) {
-	api.handleDeprecated(Thread.currentThread().getStackTrace());
+                NoteBlockAPI api = NoteBlockAPI.getAPI();
+                if (api != null) {
+                        api.handleDeprecated(Thread.currentThread().getStackTrace());
+                }
+		
+		this.song = song;
+		this.soundCategory = soundCategory;
+		plugin = NoteBlockPlayerMain.plugin;
+		start();
 	}
 
 	this.song = song;

@@ -4,6 +4,9 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -19,8 +22,8 @@ import com.xxmicloxx.NoteBlockAPI.model.SoundCategory;
  */
 public class CompatibilityUtils {
 
-	public static final String OBC_DIR = Bukkit.getServer().getClass().getPackage().getName();
-	public static final String NMS_DIR = OBC_DIR.replaceFirst("org.bukkit.craftbukkit", "net.minecraft.server");
+        private static final List<String> OBC_PACKAGES = buildObcPackages();
+        private static final List<String> NMS_PACKAGES = buildNmsPackages();
 
 	private static Class<? extends Enum> soundCategoryClass;
 	private static HashMap<String, Method> playSoundMethod = new HashMap<>();
@@ -32,28 +35,32 @@ public class CompatibilityUtils {
 	 * @param name of class (w/ package)
 	 * @return Class of given name
 	 */
-	public static Class<?> getMinecraftClass(String name) {
-		try {
-			return Class.forName(NMS_DIR + "." + name);
-		} catch (ClassNotFoundException e) {
-			e.printStackTrace();
-			return null;
-		}
-	}
+        public static Class<?> getMinecraftClass(String name) {
+                for (String basePackage : NMS_PACKAGES) {
+                        try {
+                                return Class.forName(basePackage + "." + name);
+                        } catch (ClassNotFoundException ignored) {
+                                // Try the next candidate package name.
+                        }
+                }
+                return null;
+        }
 
 	/**
 	 * Gets CraftBukkit class from given name
 	 * @param name of class (w/ package)
 	 * @return Class of given name
 	 */
-	public static Class<?> getCraftBukkitClass(String name) {
-		try {
-			return Class.forName(OBC_DIR + "." + name);
-		} catch (ClassNotFoundException e) {
-			e.printStackTrace();
-			return null;
-		}
-	}
+        public static Class<?> getCraftBukkitClass(String name) {
+                for (String basePackage : OBC_PACKAGES) {
+                        try {
+                                return Class.forName(basePackage + "." + name);
+                        } catch (ClassNotFoundException ignored) {
+                                // Try the next candidate package name.
+                        }
+                }
+                return null;
+        }
 
 	private static Class<? extends Enum> getSoundCategoryClass() throws ClassNotFoundException {
 		if (isSoundCategoryCompatible() && soundCategoryClass == null){
@@ -303,8 +310,46 @@ public class CompatibilityUtils {
 		return serverVersion;
 	}
 
-	public static Material getNoteBlockMaterial(){
-		return Material.valueOf("NOTE_BLOCK");
-	}
+        public static Material getNoteBlockMaterial(){
+                return Material.valueOf("NOTE_BLOCK");
+        }
+
+        private static List<String> buildObcPackages() {
+                Set<String> packages = new LinkedHashSet<>();
+                String serverPackage = Bukkit.getServer().getClass().getPackage().getName();
+                packages.add(serverPackage);
+
+                if (serverPackage.startsWith("org.bukkit.craftbukkit.")) {
+                        packages.add("org.bukkit.craftbukkit");
+                        int versionStart = serverPackage.indexOf('.', "org.bukkit.craftbukkit".length() + 1);
+                        if (versionStart > 0) {
+                                packages.add(serverPackage.substring(0, versionStart));
+                        }
+                } else if (!"org.bukkit.craftbukkit".equals(serverPackage)) {
+                        packages.add("org.bukkit.craftbukkit");
+                }
+
+                return new ArrayList<>(packages);
+        }
+
+        private static List<String> buildNmsPackages() {
+                Set<String> packages = new LinkedHashSet<>();
+                String serverPackage = Bukkit.getServer().getClass().getPackage().getName();
+
+                packages.add(serverPackage.replaceFirst("org.bukkit.craftbukkit", "net.minecraft.server"));
+
+                int versionIndex = serverPackage.indexOf('.', "org.bukkit.craftbukkit".length() + 1);
+                if (versionIndex > 0) {
+                        String versionSuffix = serverPackage.substring(versionIndex + 1);
+                        if (!versionSuffix.isEmpty()) {
+                                packages.add("net.minecraft.server." + versionSuffix);
+                        }
+                }
+
+                packages.add("net.minecraft.server");
+                packages.add("net.minecraft");
+
+                return new ArrayList<>(packages);
+        }
 
 }
