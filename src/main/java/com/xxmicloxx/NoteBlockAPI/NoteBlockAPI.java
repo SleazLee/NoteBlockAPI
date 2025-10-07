@@ -25,154 +25,17 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class NoteBlockAPI extends JavaPlugin {
 
-        private static final ApiState STATE = new ApiState();
+	private static NoteBlockAPI plugin;
+	
+	private Map<UUID, ArrayList<SongPlayer>> playingSongs = new ConcurrentHashMap<UUID, ArrayList<SongPlayer>>();
+	private Map<UUID, Byte> playerVolume = new ConcurrentHashMap<UUID, Byte>();
 
-        private static final class ApiState {
-                private final Map<UUID, ArrayList<SongPlayer>> playingSongs = new ConcurrentHashMap<>();
-                private final Map<UUID, Byte> playerVolume = new ConcurrentHashMap<>();
-                private final Map<Plugin, Boolean> dependentPlugins = new HashMap<>();
+	private Scheduler.Task dependencyScanTask;
+	private Scheduler.Task updateCheckTask;
 
-                private Scheduler.Task dependencyScanTask;
-                private Scheduler.Task updateCheckTask;
-
-                private boolean disabling = false;
-                private boolean initialized = false;
-
-                private NoteBlockAPI pluginInstance;
-                private JavaPlugin owningPlugin;
-        }
-
-        private static void ensureInitialized(JavaPlugin plugin, boolean pluginManaged) {
-                synchronized (STATE) {
-                        if (STATE.initialized) {
-                                return;
-                        }
-
-                        STATE.initialized = true;
-                        STATE.owningPlugin = plugin;
-                        if (pluginManaged && plugin instanceof NoteBlockAPI) {
-                                STATE.pluginInstance = (NoteBlockAPI) plugin;
-                        }
-
-                        STATE.disabling = false;
-
-                        STATE.dependentPlugins.clear();
-                        for (Plugin pl : Bukkit.getServer().getPluginManager().getPlugins()) {
-                                if (pl.getDescription().getDepend().contains("NoteBlockAPI")
-                                                || pl.getDescription().getSoftDepend().contains("NoteBlockAPI")) {
-                                        STATE.dependentPlugins.put(pl, false);
-                                }
-                        }
-
-                        final Metrics metrics = pluginManaged ? new Metrics(plugin, 1083) : null;
-                        final JavaPlugin owningPlugin = plugin;
-
-                        new NoteBlockPlayerMain().onEnable();
-
-                        STATE.dependencyScanTask = Scheduler.runLater(new Runnable() {
-
-                                @Override
-                                public void run() {
-                                        Plugin[] plugins = Bukkit.getServer().getPluginManager().getPlugins();
-                                        Type[] types = new Type[]{PlayerRangeStateChangeEvent.class, SongDestroyingEvent.class, SongEndEvent.class, SongStoppedEvent.class };
-                                        for (Plugin pl : plugins) {
-                                                ArrayList<RegisteredListener> rls = HandlerList.getRegisteredListeners(pl);
-                                                for (RegisteredListener rl : rls) {
-                                                        Method[] methods = rl.getListener().getClass().getDeclaredMethods();
-                                                        for (Method m : methods) {
-                                                                Type[] params = m.getParameterTypes();
-                                                                param:
-                                                                for (Type paramType : params) {
-                                                                        for (Type type : types){
-                                                                                if (paramType.equals(type)) {
-                                                                                        synchronized (STATE) {
-                                                                                                if (STATE.dependentPlugins.containsKey(pl)) {
-                                                                                                        STATE.dependentPlugins.put(pl, true);
-                                                                                                }
-                                                                                        }
-                                                                                        break param;
-                                                                                }
-                                                                        }
-                                                                }
-                                                        }
-                                                }
-                                        }
-
-                                        if (metrics != null) {
-                                                metrics.addCustomChart(new DrilldownPie("deprecated", () -> {
-                                                        Map<String, Map<String, Integer>> map = new HashMap<>();
-                                                        synchronized (STATE) {
-                                                                for (Plugin tracked : STATE.dependentPlugins.keySet()){
-                                                                        String deprecated = STATE.dependentPlugins.get(tracked) ? "yes" : "no";
-                                                                        Map<String, Integer> entry = new HashMap<>();
-                                                                        entry.put(tracked.getDescription().getFullName(), 1);
-                                                                        map.put(deprecated, entry);
-                                                                }
-                                                        }
-                                                        return map;
-                                                }));
-                                        }
-                                }
-                        }, 1);
-
-                        if (pluginManaged) {
-                                STATE.updateCheckTask = Scheduler.runAsyncTimer(new Runnable() {
-
-                                        @Override
-                                        public void run() {
-                                                try {
-                                                        if (Updater.checkUpdate("19287", owningPlugin.getDescription().getVersion())){
-                                                                Bukkit.getLogger().info(String.format("[%s] New update available!", owningPlugin.getDescription().getName()));
-                                                        }
-                                                } catch (IOException e) {
-                                                        Bukkit.getLogger().info(String.format("[%s] Cannot receive update from Spigot resource page!", owningPlugin.getDescription().getName()));
-                                                }
-                                        }
-                                }, 20*10, 20 * 60 * 60 * 24);
-                        }
-                }
-        }
-
-        private static void shutdownInternal() {
-                synchronized (STATE) {
-                        if (!STATE.initialized) {
-                                return;
-                        }
-
-                        STATE.disabling = true;
-                        if (STATE.dependencyScanTask != null) {
-                                STATE.dependencyScanTask.cancel();
-                                STATE.dependencyScanTask = null;
-                        }
-
-                        if (STATE.updateCheckTask != null) {
-                                STATE.updateCheckTask.cancel();
-                                STATE.updateCheckTask = null;
-                        }
-
-                        if (!Scheduler.isFolia() && STATE.owningPlugin != null) {
-                                Bukkit.getScheduler().cancelTasks(STATE.owningPlugin);
-                                List<BukkitWorker> workers = Bukkit.getScheduler().getActiveWorkers();
-                                for (BukkitWorker worker : workers){
-                                        if (!worker.getOwner().equals(STATE.owningPlugin))
-                                                continue;
-                                        worker.getThread().interrupt();
-                                }
-                        }
-                        if (NoteBlockPlayerMain.plugin != null) {
-                                NoteBlockPlayerMain.plugin.onDisable();
-                        }
-
-                        STATE.playingSongs.clear();
-                        STATE.playerVolume.clear();
-                        STATE.dependentPlugins.clear();
-
-                        STATE.pluginInstance = null;
-                        STATE.owningPlugin = null;
-                        STATE.initialized = false;
-                        STATE.disabling = false;
-                }
-        }
+	private boolean disabling = false;
+	
+	private HashMap<Plugin, Boolean> dependentPlugins = new HashMap<>();
 
 	/**
 	 * Returns true if a Player is currently receiving a song
@@ -188,10 +51,10 @@ public class NoteBlockAPI extends JavaPlugin {
 	 * @param uuid
 	 * @return is receiving a song
 	 */
-        public static boolean isReceivingSong(UUID uuid) {
-                ArrayList<SongPlayer> songs = STATE.playingSongs.get(uuid);
-                return (songs != null && !songs.isEmpty());
-        }
+	public static boolean isReceivingSong(UUID uuid) {
+		ArrayList<SongPlayer> songs = plugin.playingSongs.get(uuid);
+		return (songs != null && !songs.isEmpty());
+	}
 
 	/**
 	 * Stops the song for a Player
@@ -205,15 +68,15 @@ public class NoteBlockAPI extends JavaPlugin {
 	 * Stops the song for a Player
 	 * @param uuid
 	 */
-        public static void stopPlaying(UUID uuid) {
-                ArrayList<SongPlayer> songs = STATE.playingSongs.get(uuid);
-                if (songs == null) {
-                        return;
-                }
-                for (SongPlayer songPlayer : songs) {
-                        songPlayer.removePlayer(uuid);
-                }
-        }
+	public static void stopPlaying(UUID uuid) {
+		ArrayList<SongPlayer> songs = plugin.playingSongs.get(uuid);
+		if (songs == null) {
+			return;
+		}
+		for (SongPlayer songPlayer : songs) {
+			songPlayer.removePlayer(uuid);
+		}
+	}
 
 	/**
 	 * Sets the volume for a given Player
@@ -229,9 +92,9 @@ public class NoteBlockAPI extends JavaPlugin {
 	 * @param uuid
 	 * @param volume
 	 */
-        public static void setPlayerVolume(UUID uuid, byte volume) {
-                STATE.playerVolume.put(uuid, volume);
-        }
+	public static void setPlayerVolume(UUID uuid, byte volume) {
+		plugin.playerVolume.put(uuid, volume);
+	}
 
 	/**
 	 * Gets the volume for a given Player
@@ -248,85 +111,141 @@ public class NoteBlockAPI extends JavaPlugin {
 	 * @return volume (byte)
 	 */
 	public static byte getPlayerVolume(UUID uuid) {
-                Byte byteObj = STATE.playerVolume.get(uuid);
-                if (byteObj == null) {
-                        byteObj = 100;
-                        STATE.playerVolume.put(uuid, byteObj);
-                }
-                return byteObj;
-        }
+		Byte byteObj = plugin.playerVolume.get(uuid);
+		if (byteObj == null) {
+			byteObj = 100;
+			plugin.playerVolume.put(uuid, byteObj);
+		}
+		return byteObj;
+	}
 	
 	public static ArrayList<SongPlayer> getSongPlayersByPlayer(Player player){
 		return getSongPlayersByPlayer(player.getUniqueId());
 	}
 	
 	public static ArrayList<SongPlayer> getSongPlayersByPlayer(UUID player){
-                return STATE.playingSongs.get(player);
-        }
+		return plugin.playingSongs.get(player);
+	}
 	
 	public static void setSongPlayersByPlayer(Player player, ArrayList<SongPlayer> songs){
 		setSongPlayersByPlayer(player.getUniqueId(), songs);
 	}
 	
-        public static void setSongPlayersByPlayer(UUID player, ArrayList<SongPlayer> songs){
-                STATE.playingSongs.put(player, songs);
-        }
+	public static void setSongPlayersByPlayer(UUID player, ArrayList<SongPlayer> songs){
+		plugin.playingSongs.put(player, songs);
+	}
 
-        public static void initializeAPI(JavaPlugin plugin) {
-                ensureInitialized(plugin, false);
-        }
+	@Override
+	public void onEnable() {
+		plugin = this;
 
-        public static void shutdownAPI() {
-                shutdownInternal();
-        }
+                for (Plugin pl : getServer().getPluginManager().getPlugins()){
+			if (pl.getDescription().getDepend().contains("NoteBlockAPI") || pl.getDescription().getSoftDepend().contains("NoteBlockAPI")){
+				dependentPlugins.put(pl, false);
+			}
+		}
+		
+		Metrics metrics = new Metrics(this, 1083);
+		
+		
+		new NoteBlockPlayerMain().onEnable();
+		
+		dependencyScanTask = Scheduler.runLater(new Runnable() {
 
-        @Override
-        public void onEnable() {
-                ensureInitialized(this, true);
-        }
+			@Override
+			public void run() {
+				Plugin[] plugins = getServer().getPluginManager().getPlugins();
+			Type[] types = new Type[]{PlayerRangeStateChangeEvent.class, SongDestroyingEvent.class, SongEndEvent.class, SongStoppedEvent.class };
+			for (Plugin plugin : plugins) {
+			    ArrayList<RegisteredListener> rls = HandlerList.getRegisteredListeners(plugin);
+			    for (RegisteredListener rl : rls) {
+				Method[] methods = rl.getListener().getClass().getDeclaredMethods();
+				for (Method m : methods) {
+				    Type[] params = m.getParameterTypes();
+				    param:
+				    for (Type paramType : params) {
+					for (Type type : types){
+						if (paramType.equals(type)) {
+							dependentPlugins.put(plugin, true);
+							break param;
+						}
+					}
+				    }
+				}
 
-        @Override
-        public void onDisable() {
-                shutdownInternal();
-        }
+			    }
+			}
 
-        public void doSync(Runnable runnable) {
-                Scheduler.run(runnable);
-        }
+			metrics.addCustomChart(new DrilldownPie("deprecated", () -> {
+				Map<String, Map<String, Integer>> map = new HashMap<>();
+				for (Plugin pl : dependentPlugins.keySet()){
+					String deprecated = dependentPlugins.get(pl) ? "yes" : "no";
+					Map<String, Integer> entry = new HashMap<>();
+					entry.put(pl.getDescription().getFullName(), 1);
+					map.put(deprecated, entry);
+				}
+				return map;
+			    }));
+			}
+		}, 1);
 
-        public void doAsync(Runnable runnable) {
-                Scheduler.runAsync(runnable);
-        }
+		updateCheckTask = Scheduler.runAsyncTimer(new Runnable() {
 
-        public boolean isDisabling() {
-                return STATE.disabling;
-        }
+			@Override
+			public void run() {
+				try {
+					if (Updater.checkUpdate("19287", getDescription().getVersion())){
+						Bukkit.getLogger().info(String.format("[%s] New update available!", plugin.getDescription().getName()));
+					}
+				} catch (IOException e) {
+					Bukkit.getLogger().info(String.format("[%s] Cannot receive update from Spigot resource page!", plugin.getDescription().getName()));
+				}
+			}
+		}, 20*10, 20 * 60 * 60 * 24);
+	}
 
-        public static void doSync(Runnable runnable) {
-                Scheduler.run(runnable);
-        }
+	@Override
+	public void onDisable() {    	
+		disabling = true;
+		if (dependencyScanTask != null) {
+			dependencyScanTask.cancel();
+			dependencyScanTask = null;
+		}
 
-        public static void doAsync(Runnable runnable) {
-                Scheduler.runAsync(runnable);
-        }
+		if (updateCheckTask != null) {
+			updateCheckTask.cancel();
+			updateCheckTask = null;
+		}
 
-        public static boolean isDisablingAPI() {
-                synchronized (STATE) {
-                        return STATE.disabling;
-                }
-        }
+		if (!Scheduler.isFolia()) {
+			Bukkit.getScheduler().cancelTasks(this);
+			List<BukkitWorker> workers = Bukkit.getScheduler().getActiveWorkers();
+			for (BukkitWorker worker : workers){
+				if (!worker.getOwner().equals(this))
+					continue;
+				worker.getThread().interrupt();
+			}
+		}
+		NoteBlockPlayerMain.plugin.onDisable();
+	}
 
-        public static NoteBlockAPI getAPI(){
-                return STATE.pluginInstance;
-        }
+	public void doSync(Runnable runnable) {
+		Scheduler.run(runnable);
+	}
 
-        public static Plugin getOwningPlugin() {
-                synchronized (STATE) {
-                        return STATE.owningPlugin;
-                }
-        }
+	public void doAsync(Runnable runnable) {
+		Scheduler.runAsync(runnable);
+	}
 
-        protected void handleDeprecated(StackTraceElement[] ste){
+	public boolean isDisabling() {
+		return disabling;
+	}
+	
+	public static NoteBlockAPI getAPI(){
+		return plugin;
+	}
+	
+	protected void handleDeprecated(StackTraceElement[] ste){
 		int pom = 1;
 		String clazz = ste[pom].getClassName();
 		while (clazz.startsWith("com.xxmicloxx.NoteBlockAPI")){
@@ -334,10 +253,8 @@ public class NoteBlockAPI extends JavaPlugin {
 			clazz = ste[pom].getClassName();
 		}
 		String[] packageParts = clazz.split("\\.");
-                ArrayList<Plugin> plugins = new ArrayList<Plugin>();
-                synchronized (STATE) {
-                        plugins.addAll(STATE.dependentPlugins.keySet());
-                }
+		ArrayList<Plugin> plugins = new ArrayList<Plugin>();
+		plugins.addAll(dependentPlugins.keySet());
 		
 		ArrayList<Plugin> notResult = new ArrayList<Plugin>();
 		parts:
@@ -361,10 +278,8 @@ public class NoteBlockAPI extends JavaPlugin {
 		plugins.removeAll(notResult);
 		notResult.clear();
 		if (plugins.size() == 1){
-                        synchronized (STATE) {
-                                STATE.dependentPlugins.put(plugins.get(0), true);
-                        }
-                }
-        }
-
+			dependentPlugins.put(plugins.get(0), true);
+		}
+	}
+	
 }
